@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مُنزل المانهوا السريع | Direct Downloader</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-xl w-full bg-slate-800 border border-slate-700 rounded-2xl p-6 sm:p-8 shadow-2xl">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-indigo-400 mb-2">⚡ مُنزل المانهوا المباشر</h1>
+            <p class="text-slate-400 text-sm">أدخل رابط المانهوا وحمّل الفصول تلقائياً بملف مضغوط واحد</p>
+        </div>
+
+        <form id="downloadForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-semibold mb-1 text-slate-300">رابط المانهوا:</label>
+                <input type="url" id="url" name="url" required placeholder="https://olympustaff.com/series/PMU" 
+                       class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-left font-mono text-sm text-slate-100">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-1 text-slate-300">رابط بدْء الفصل:</label>
+                    <input type="number" id="start_chapter" name="start_chapter" value="1" min="1" 
+                           class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-center font-bold text-slate-100">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-1 text-slate-300">عدد الفصول (اختياري):</label>
+                    <input type="number" id="max_chapters" name="max_chapters" placeholder="كل الفصول" min="1" 
+                           class="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-center font-bold text-slate-100">
+                </div>
+            </div>
+
+            <button type="submit" id="submitBtn" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+                <span>بدء التجميع والتحميل</span>
+            </button>
+        </form>
+
+        <!-- قسم شريط التقدم -->
+        <div id="progressSection" class="hidden mt-6 pt-6 border-t border-slate-700 space-y-4">
+            <div class="flex justify-between items-center text-sm font-semibold">
+                <span id="statusText" class="text-indigo-300">جاري البدء...</span>
+                <span id="progressPercent" class="text-slate-400">0%</span>
+            </div>
+
+            <div class="w-full bg-slate-900 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700">
+                <div id="progressBar" class="bg-indigo-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+
+            <!-- زر إعادة التنزيل اليادوي في حال منع المتصفح التنزيل التلقائي -->
+            <div id="downloadContainer" class="hidden pt-2">
+                <a id="downloadBtn" href="#" class="block w-full text-center py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition-all animate-pulse">
+                    🎉 اضغط هنا إذا لم يبدأ التحميل تلقائياً
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('downloadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const statusText = document.getElementById('statusText');
+        const downloadContainer = document.getElementById('downloadContainer');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let pollInterval = null;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            progressSection.classList.remove('hidden');
+            downloadContainer.classList.add('hidden');
+            progressBar.style.width = '0%';
+            progressPercent.innerText = '0%';
+            statusText.innerText = 'جاري إرسال الطلب للخادم...';
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/api/start-download', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.task_id) {
+                    // فحص حالة التنزيل كل 1.5 ثانية
+                    pollInterval = setInterval(() => checkStatus(data.task_id), 1500);
+                }
+            } catch (err) {
+                statusText.innerText = 'حدث خطأ أثناء الاتصال بالخادم.';
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+
+        async function checkStatus(taskId) {
+            try {
+                const res = await fetch(`/api/task-status/${taskId}`);
+                const data = await res.json();
+
+                statusText.innerText = data.message;
+                progressBar.style.width = `${data.progress}%`;
+                progressPercent.innerText = `${data.progress}%`;
+
+                if (data.status === 'completed') {
+                    clearInterval(pollInterval);
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    
+                    // تجهيز رابط الزر اليادوي
+                    downloadBtn.href = data.download_url;
+                    downloadContainer.classList.remove('hidden');
+
+                    // ⚡ إطلاق التنزيل المباشر والتلقائي في المتصفح فوراً
+                    window.location.href = data.download_url;
+                } else if (data.status === 'failed') {
+                    clearInterval(pollInterval);
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    statusText.classList.replace('text-indigo-300', 'text-red-400');
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+    </script>
+</body>
+</html>
